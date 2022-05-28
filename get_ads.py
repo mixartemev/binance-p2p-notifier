@@ -1,25 +1,41 @@
 import asyncio
+import json
 
 from httpx import AsyncClient, Response
 from Ad import Ad
-from loader import banks, URL_SRC, hds
+from loader import banks, URL_SRC, hds, gap
 from reqs import tg_offers, _tg_send
 
 ads = []
+assets = {'USDT': [0, 0],
+          'BUSD': [0, 0],
+          'ETH':  [0, 0],
+          'BTC':  [0, 0],
+          'BNB':  [0, 0],
+          'RUB':  [0, 0],
+          'SHIB': [0, 0]}
 
 
 async def get_ads(asset: str = 'USDT', threshold: float = None, sell: bool = False, fiat: str = 'RUB', amount: int = None):
-    payload = {"page": 1, "rows": 20, "payTypes": banks, "asset": asset, "tradeType": "SELL" if sell else "BUY", "fiat": fiat, "transAmount": amount}
+    payload = {"page": 1, "rows": 5, "payTypes": list(banks.keys()), "asset": asset, "tradeType": "SELL" if sell else "BUY", "fiat": fiat}  # , "transAmount": amount
+
     async with AsyncClient() as client:
         resp: Response = await client.post(URL_SRC, headers=hds, json=payload)
         if resp.status_code == 200:
-            for d in resp.json().get('data'):
+            data = resp.json().get('data')
+            threshold = threshold or assets[asset][int(sell)]  # for fixes rate diapasons
+            assets[asset][int(sell)] = float(data[0]['adv']['price'])
+            if not threshold or assets[asset][0]*(1+gap) > assets[asset][1]:
+                return
+            for d in data:
                 ad = Ad(d['adv'])
-                cond: bool = (ad.price >= threshold if sell else ad.price <= threshold) if threshold else True  # profitability
-                cond = cond and ad.advNo not in ads  # no repeat
+                if ad.price < min(threshold, assets[asset][0])*(1+gap) if sell else ad.price > max(threshold, assets[asset][1])*(1-gap):
+                    return  # profitability check
+                cond: bool = ad.advNo not in ads  # no repeat
+                cond = cond and ad.minFiat <= amount
                 if cond:  # or d['advertiser']['nickName'] == 'Hasy':
-                    await tg_offers(ad)
                     ads.append(ad.advNo)
+                    return await tg_offers(ad, assets[asset])
             print('.', end='')
         else:
             txt = f'ERROR: {resp.status_code}'
@@ -29,25 +45,13 @@ async def get_ads(asset: str = 'USDT', threshold: float = None, sell: bool = Fal
 
 async def main():
     while True:
-        await get_ads(asset='USDT', threshold=72.5, amount=1000)
-        await get_ads(asset='BUSD', threshold=72)
-        await get_ads(asset='RUB', threshold=1.07)
-        await get_ads(asset='ETH', threshold=130000)
-        await get_ads(asset='BTC', threshold=2000000)
-        await get_ads(asset='BNB', threshold=22000)
-        # await get_ads(asset='SHIB', threshold=0.0007)  #
+        old_assets = json.dumps(assets)
+        for ast, prc in assets.items():
+            await get_ads(asset=ast, threshold=prc[0], amount=10000)
+            await get_ads(asset=ast, threshold=prc[1], sell=True, amount=110000)
 
-        await get_ads(asset='USDT', threshold=73, sell=True)
-        await get_ads(asset='BUSD', threshold=73, sell=True)
-        await get_ads(asset='RUB', threshold=1.15, sell=True)
-        await get_ads(asset='ETH', threshold=136000, sell=True)
-        await get_ads(asset='BTC', threshold=2160000, sell=True)
-        await get_ads(asset='BNB', threshold=23000, sell=True)
-        # await get_ads(asset='SHIB', threshold=0.0008, sell=True)  #
-        # await get_ads(asset='USDT', threshold=0.9, sell=False, fiat='EUR')
-        # await get_ads(asset='ETH', threshold=2350, sell=False, fiat='EUR')
-        # await get_ads(asset='BTC', threshold=35500, sell=False, fiat='EUR')
-        # await get_ads(asset='BNB', threshold=335, sell=False, fiat='EUR')
+        if json.dumps(assets) != old_assets:
+            print(assets)
 
         # await asyncio.sleep(1)
 

@@ -16,5 +16,6 @@ class Ad:
         self.commission: float = float(adv['commissionRate'])
 
     def common(self):
-        # b = list(set(banks) & set(self.tms))[0]  # best available bank
-        return ':'.join([self.advNo, self.tradeType, self.asset, self.fiat, str(self.price)])
+        bank = list(set(banks.keys()) & set(self.tms))[0] if self.tradeType == 'SELL' else ''
+        pay_id = banks[bank] if self.tradeType == 'SELL' else ''
+        return ':'.join([self.advNo, self.tradeType, self.asset, self.fiat, str(self.price), bank, pay_id])

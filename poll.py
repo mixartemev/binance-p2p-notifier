@@ -23,12 +23,12 @@ async def main():
                 cb = res[-1]['callback_query']
                 data = cb['data'].split(':')
                 res = await make_order(*data)
-                # await make_order(ad.advNo, asset, fiat, ad.price, ad.minFiat, sell)
-                await client.get(f'{URL_TG}answerCallbackQuery?callback_query_id={cb["id"]}&text={cb["data"]}')  # &url=
+                txt = cb["data"] if res else "!ERROR!!!"
+                await client.get(f'{URL_TG}answerCallbackQuery?callback_query_id={cb["id"]}&text={txt}')  # &url=
                 print(data)
 
         print('.', end='')
-        await asyncio.sleep(1)
+        # await asyncio.sleep(1)
 
 try:
     asyncio.run(main())
